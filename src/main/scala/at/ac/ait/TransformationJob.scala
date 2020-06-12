@@ -155,38 +155,6 @@ object TransformationJob {
           transactions
         )
 
-    println("Computing address relations")
-    val addressRelations =
-      transformation
-        .computeAddressRelations(
-          plainAddressRelations,
-          basicAddresses,
-          exchangeRates,
-          addressTags
-        )
-        .persist()
-    val noAddressRelations = addressRelations.count()
-    cassandra.store(
-      conf.targetKeyspace(),
-      "address_incoming_relations",
-      addressRelations.sort(F.dstAddressId)
-    )
-    cassandra.store(
-      conf.targetKeyspace(),
-      "address_outgoing_relations",
-      addressRelations.sort(F.srcAddressId)
-    )
-
-    println("Computing addresses")
-    val addresses =
-      transformation.computeAddresses(
-        basicAddresses,
-        addressRelations,
-        addressIds
-      )
-    val noAddresses = addresses.count()
-    cassandra.store(conf.targetKeyspace(), "address", addresses)
-
     spark.sparkContext.setJobDescription("Perform clustering")
     println("Computing address clusters")
     val addressCluster = transformation
@@ -233,6 +201,40 @@ object TransformationJob {
     val clusterTags =
       transformation.computeClusterTags(addressCluster, addressTags).persist()
     cassandra.store(conf.targetKeyspace(), "cluster_tags", clusterTags)
+
+    println("Computing address relations")
+    val addressRelations =
+      transformation
+        .computeAddressRelations(
+          plainAddressRelations,
+          basicAddresses,
+          addressCluster,
+          exchangeRates,
+          addressTags,
+          clusterTags
+        )
+        .persist()
+    val noAddressRelations = addressRelations.count()
+    cassandra.store(
+      conf.targetKeyspace(),
+      "address_incoming_relations",
+      addressRelations.sort(F.dstAddressId)
+    )
+    cassandra.store(
+      conf.targetKeyspace(),
+      "address_outgoing_relations",
+      addressRelations.sort(F.srcAddressId)
+    )
+
+    println("Computing addresses")
+    val addresses =
+      transformation.computeAddresses(
+        basicAddresses,
+        addressRelations,
+        addressIds
+      )
+    val noAddresses = addresses.count()
+    cassandra.store(conf.targetKeyspace(), "address", addresses)
 
     println("Computing plain cluster relations")
     val plainClusterRelations =

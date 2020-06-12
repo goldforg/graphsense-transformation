@@ -50,6 +50,8 @@ object Fields {
   val labelNormPrefix = "labelNormPrefix"
   val category = "category"
   val abuse = "abuse"
-  val srcLabels = "srcLabels"
-  val dstLabels = "dstLabels"
+  val srcAddressLabels = "srcAddressLabels"
+  val dstAddressLabels = "dstAddressLabels"
+  val srcClusterLabels = "srcClusterLabels"
+  val dstClusterLabels = "dstClusterLabels"
 }

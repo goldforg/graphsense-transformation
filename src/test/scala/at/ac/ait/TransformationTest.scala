@@ -135,32 +135,6 @@ class TransformationTest
   val plainAddressRelations =
     t.computePlainAddressRelations(inputs, outputs, regInputs, transactions)
 
-  val addressRelationsLimit1 =
-    t.computeAddressRelations(
-        plainAddressRelations,
-        basicAddresses,
-        exchangeRates,
-        addressTags,
-        1
-      )
-      .sort(F.dstAddressId, F.srcAddressId)
-      .persist()
-
-  val addressRelations =
-    t.computeAddressRelations(
-        plainAddressRelations,
-        basicAddresses,
-        exchangeRates,
-        addressTags
-      )
-      .sort(F.dstAddressId, F.srcAddressId)
-      .persist()
-  val noAddressRelations = addressRelations.count()
-
-  val addresses =
-    t.computeAddresses(basicAddresses, addressRelations, addressIds).persist()
-  val noAddresses = addresses.count()
-
   val addressCluster =
     t.computeAddressCluster(regInputs, addressIds, true)
       .sort(F.addressIdGroup, F.addressId)
@@ -206,6 +180,37 @@ class TransformationTest
     t.computeClusterTags(addressClusterCoinjoin, addressTags)
       .sort(F.cluster)
       .persist()
+
+  val addressRelationsLimit1 =
+    t.computeAddressRelations(
+        plainAddressRelations,
+        basicAddresses,
+        addressCluster,
+        exchangeRates,
+        addressTags,
+        clusterTags,
+        1
+      )
+      .sort(F.dstAddressId, F.srcAddressId)
+      .persist()
+addressRelationsLimit1.show
+  val addressRelations =
+    t.computeAddressRelations(
+        plainAddressRelations,
+        basicAddresses,
+        addressCluster,
+        exchangeRates,
+        addressTags,
+        clusterTags
+      )
+      .sort(F.dstAddressId, F.srcAddressId)
+      .persist()
+  val noAddressRelations = addressRelations.count()
+addressRelations.show
+
+  val addresses =
+    t.computeAddresses(basicAddresses, addressRelations, addressIds).persist()
+  val noAddresses = addresses.count()
 
   val plainClusterRelations =
     t.computePlainClusterRelations(clusterInputs, clusterOutputs).persist()

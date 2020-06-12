@@ -12,6 +12,7 @@ import org.apache.spark.sql.functions.{
   row_number,
   substring,
   sum,
+  typedLit, // TODO
   udf,
   when
 }
@@ -51,11 +52,7 @@ class Transformator(spark: SparkSession, bucketSize: Int) extends Serializable {
         val convert: (Long, Float) => Float =
           (value, price) =>
             ((value * price / 1000000 + 0.5).toLong / 100.0).toFloat
-        Currency(
-          value,
-          convert(value, eurPrice),
-          convert(value, usdPrice)
-        )
+        Currency(value, convert(value, eurPrice), convert(value, usdPrice))
     }
     @tailrec
     def processColumns(df: DataFrame, cs: List[String]): DataFrame =
@@ -83,11 +80,7 @@ class Transformator(spark: SparkSession, bucketSize: Int) extends Serializable {
       )
     )
 
-  def toClusterSummary(
-      noAddresses: Int,
-      received: Row,
-      sent: Row
-  ) =
+  def toClusterSummary(noAddresses: Int, received: Row, sent: Row) =
     ClusterSummary(
       noAddresses,
       Currency(
@@ -266,14 +259,16 @@ class Transformator(spark: SparkSession, bucketSize: Int) extends Serializable {
 
   def addressRelations(
       plainAddressRelations: Dataset[PlainAddressRelations],
-      addresses: Dataset[BasicAddress],
+      basicAddresses: Dataset[BasicAddress],
+      addressCluster: Dataset[AddressCluster],
       exchangeRates: Dataset[ExchangeRates],
       addressTags: Dataset[AddressTags],
+      clusterTags: Dataset[ClusterTags],
       txLimit: Int
   ): Dataset[AddressRelations] = {
 
     val props =
-      addresses.select(
+      basicAddresses.select(
         col(F.addressId),
         udf(toAddressSummary _).apply($"totalReceived", $"totalSpent")
       )
@@ -281,6 +276,11 @@ class Transformator(spark: SparkSession, bucketSize: Int) extends Serializable {
     val addressLabels = addressTags
       .groupBy(F.addressId)
       .agg(collect_set(col(F.label)).as(F.label))
+
+    val clusterLabels = clusterTags
+      .groupBy(F.cluster)
+      .agg(collect_set(col(F.label)).as(F.label))
+    clusterLabels.show
 
     val fullAddressRelations = toCurrencyDataFrame(
       exchangeRates,
@@ -303,7 +303,7 @@ class Transformator(spark: SparkSession, bucketSize: Int) extends Serializable {
       .join(
         addressLabels.select(
           col(F.addressId).as(F.srcAddressId),
-          col(F.label).as(F.srcLabels)
+          col(F.label).as(F.srcAddressLabels)
         ),
         Seq(F.srcAddressId),
         "left"
@@ -311,7 +311,7 @@ class Transformator(spark: SparkSession, bucketSize: Int) extends Serializable {
       .join(
         addressLabels.select(
           col(F.addressId).as(F.dstAddressId),
-          col(F.label).as(F.dstLabels)
+          col(F.label).as(F.dstAddressLabels)
         ),
         Seq(F.dstAddressId),
         "left"
@@ -333,6 +333,20 @@ class Transformator(spark: SparkSession, bucketSize: Int) extends Serializable {
 
     fullAddressRelations
       .join(txList, Seq(F.srcAddressId, F.dstAddressId), "left")
+      //.join(
+      //  addressCluster
+      //    .select(F.addressId, F.cluster)
+      //    .withColumnRenamed(F.addressId, F.dstAddressId),
+      //  Seq(F.dstAddressId),
+      //  "left"
+      //)
+      //.join(
+      //  clusterLabels.withColumnRenamed(F.label, F.dstClusterLabels),
+      //  Seq("cluster"),
+      //  "left"
+      //)
+      //.drop(F.cluster)
+      .withColumn(F.dstClusterLabels, typedLit(Seq("")))
       .as[AddressRelations]
   }
 
@@ -366,11 +380,8 @@ class Transformator(spark: SparkSession, bucketSize: Int) extends Serializable {
     val props = cluster
       .select(
         col(F.cluster),
-        udf(toClusterSummary _).apply(
-          col(F.noAddresses),
-          col("totalReceived"),
-          col("totalSpent")
-        )
+        udf(toClusterSummary _)
+          .apply(col(F.noAddresses), col("totalReceived"), col("totalSpent"))
       )
 
     val clusterLabels = clusterTags
@@ -396,7 +407,7 @@ class Transformator(spark: SparkSession, bucketSize: Int) extends Serializable {
         .join(
           clusterLabels.select(
             col(F.cluster).as(F.srcCluster),
-            col(F.label).as(F.srcLabels)
+            col(F.label).as(F.srcClusterLabels)
           ),
           Seq(F.srcCluster),
           "left"
@@ -404,7 +415,7 @@ class Transformator(spark: SparkSession, bucketSize: Int) extends Serializable {
         .join(
           clusterLabels.select(
             col(F.cluster).as(F.dstCluster),
-            col(F.label).as(F.dstLabels)
+            col(F.label).as(F.dstClusterLabels)
           ),
           Seq(F.dstCluster),
           "left"
